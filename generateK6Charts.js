@@ -79,36 +79,77 @@ class K6ResultsParser {
     return {
       process: {
         data: this.results.process.duration,
+        timestamps: this.results.process.timestamps,
         stats: processStats
       },
       finalize: {
         data: this.results.finalize.duration,
+        timestamps: this.results.finalize.timestamps,
         stats: finalizeStats
       }
     };
   }
 }
 
-function generateASCIIChart(data, title, width = 60, height = 20) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min;
-  const step = range / height;
-
-  let chart = `${title}\n`;
-  chart += `${max.toFixed(2)} ┤\n`;
-
-  for (let i = height - 1; i >= 0; i--) {
-    const threshold = max - step * (height - i);
-    let line = data.map(value => (value >= threshold ? '█' : ' ')).join('');
-    chart += `${threshold.toFixed(2).padStart(8)} ┤${line}\n`;
+function generateASCIIChart(data, timestamps, title, width = 60, height = 20) {
+    if (data.length === 0 || timestamps.length === 0) {
+      return `No data available for ${title}`;
+    }
+  
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min;
+    const step = range / height;
+  
+    const startTime = new Date(Math.min(...timestamps));
+    const endTime = new Date(Math.max(...timestamps));
+    const duration = (endTime - startTime) / 1000; // duration in seconds
+  
+    // Calculate requests per second for each time slice
+    const timeSlices = new Array(width).fill(0);
+    data.forEach((_, index) => {
+      const sliceIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
+      if (sliceIndex >= 0 && sliceIndex < width) {
+        timeSlices[sliceIndex]++;
+      }
+    });
+    const maxRps = duration > 0 ? Math.max(...timeSlices) / (duration / width) : 0;
+  
+    // Scale the data to fit the width
+    const scaledData = new Array(width).fill(min);
+    data.forEach((value, index) => {
+      const scaledIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
+      if (scaledIndex >= 0 && scaledIndex < width) {
+        scaledData[scaledIndex] = Math.max(scaledData[scaledIndex], value);
+      }
+    });
+  
+    let chart = `${title}\n`;
+    chart += `${max.toFixed(2)} ms ┤ ${maxRps.toFixed(2)} req/s\n`;
+  
+    for (let i = height - 1; i >= 0; i--) {
+      const latencyThreshold = max - step * (height - i);
+      const rpsThreshold = maxRps * (i + 1) / height;
+      let line = '';
+      for (let j = 0; j < width; j++) {
+        if (scaledData[j] >= latencyThreshold) {
+          line += '█';
+        } else if (duration > 0 && (timeSlices[j] / (duration / width)) >= rpsThreshold) {
+          line += '▒';
+        } else {
+          line += ' ';
+        }
+      }
+      chart += `${latencyThreshold.toFixed(2).padStart(8)} ms ┤${line} ${rpsThreshold.toFixed(2)} req/s\n`;
+    }
+  
+    chart += `${min.toFixed(2)} ms ┤${'─'.repeat(width)}\n`;
+    chart += `              ${' '.repeat(Math.floor(width / 2) - 5)}Time →\n`;
+    chart += `              0s${' '.repeat(width - 7)}${duration.toFixed(0)}s\n`;
+    chart += `              █ = Latency   ▒ = Request Rate\n`;
+  
+    return chart;
   }
-
-  chart += `${min.toFixed(2)} ┤${'─'.repeat(width)}\n`;
-  chart += `         ${' '.repeat(Math.floor(width / 2) - 5)}Time →\n`;
-
-  return chart;
-}
 
 // Main execution
 const filePath = 'k6-results.json';
@@ -116,8 +157,8 @@ const parser = new K6ResultsParser(filePath);
 parser.parse();
 const chartData = parser.generateChartData();
 
-const processChart = generateASCIIChart(chartData.process.data, 'Process Request Duration');
-const finalizeChart = generateASCIIChart(chartData.finalize.data, 'Finalize Request Duration');
+const processChart = generateASCIIChart(chartData.process.data, chartData.process.timestamps, 'Process Request Duration');
+const finalizeChart = generateASCIIChart(chartData.finalize.data, chartData.finalize.timestamps, 'Finalize Request Duration');
 
 // Generate Slack message
 const generateSlackMessage = (chartData, processChart, finalizeChart) => {
@@ -149,7 +190,6 @@ ${finalizeChart}
 };
 
 const slackMessage = generateSlackMessage(chartData, processChart, finalizeChart);
-console.log('Slack message:');
 console.log(slackMessage);
 
 // Optionally, save the message to a file

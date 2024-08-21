@@ -8,7 +8,7 @@ const web = new WebClient(process.env.SLACK_BOT_TOKEN);
     const messageContent = fs.readFileSync('slack_message.txt', 'utf-8');
     
     await web.chat.postMessage({
-      channel: 'whatever',
+      channel: process.env.SLACK_CHANNEL_ID,
       text: messageContent,
     });
 
