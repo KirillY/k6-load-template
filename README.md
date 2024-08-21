@@ -4,10 +4,10 @@ K6 script with few scenarios, exit if smoke fail
 ### Smoke PASSED
 ```shell
 node server.js
-k6 run -e SCENARIO=load script.js
+k6 run -e SCENARIO=load k6_script.js
 ```
 ### Smoke FAILED
 ```shell
 node fail-smoke-server.js
-k6 run -e SCENARIO=load script.js
+k6 run -e SCENARIO=load k6_script.js
 ```
