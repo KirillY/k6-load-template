@@ -158,38 +158,29 @@ const chartData = parser.generateChartData();
 const processChart = generateASCIIChart(chartData.process.data, chartData.process.timestamps, 'Process Request Duration');
 const finalizeChart = generateASCIIChart(chartData.finalize.data, chartData.finalize.timestamps, 'Finalize Request Duration');
 
-// Generate Slack message
-const generateSlackMessage = (chartData, processChart, finalizeChart) => {
-  return `
-:chart_with_upwards_trend: *K6 Load Test Results* :chart_with_upwards_trend:
+// Save charts to separate files
+fs.writeFileSync('process_chart.txt', processChart);
+fs.writeFileSync('finalize_chart.txt', finalizeChart);
 
-*Process Request*
+// Generate summary text
+const summaryText = `
+K6 Load Test Results
+
+Process Request:
 • Average: ${chartData.process.stats.avg.toFixed(2)} ms
 • Max: ${chartData.process.stats.max.toFixed(2)} ms
 • Min: ${chartData.process.stats.min.toFixed(2)} ms
 • 90th percentile: ${chartData.process.stats.p90.toFixed(2)} ms
 • 95th percentile: ${chartData.process.stats.p95.toFixed(2)} ms
 
-\`\`\`
-${processChart}
-\`\`\`
-
-*Finalize Request*
+Finalize Request:
 • Average: ${chartData.finalize.stats.avg.toFixed(2)} ms
 • Max: ${chartData.finalize.stats.max.toFixed(2)} ms
 • Min: ${chartData.finalize.stats.min.toFixed(2)} ms
 • 90th percentile: ${chartData.finalize.stats.p90.toFixed(2)} ms
 • 95th percentile: ${chartData.finalize.stats.p95.toFixed(2)} ms
+`;
 
-\`\`\`
-${finalizeChart}
-\`\`\`
-  `;
-};
+fs.writeFileSync('summary.txt', summaryText);
 
-const slackMessage = generateSlackMessage(chartData, processChart, finalizeChart);
-console.log(slackMessage);
-
-// Optionally, save the message to a file
-fs.writeFileSync('slack_message.txt', slackMessage);
-console.log('Slack message saved to slack_message.txt');
+console.log('Charts and summary saved to files.');
