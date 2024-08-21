@@ -1,169 +1,17 @@
 const fs = require('fs');
+const K6ResultsParser = require('./K6ResultsParser');
+const generateASCIIChart = require('./generateASCIIChart');
 
-class K6ResultsParser {
-  constructor(filePath) {
-    this.filePath = filePath;
-    this.results = {
-      process: {
-        duration: [],
-        failed: [],
-        timestamps: []
-      },
-      finalize: {
-        duration: [],
-        failed: [],
-        timestamps: []
-      }
-    };
-  }
+function generateK6Charts(inputData, outputDir = '.') {
+  const parser = new K6ResultsParser(inputData);
+  parser.parse();
+  const chartData = parser.generateChartData();
 
-  parse() {
-    const fileContent = fs.readFileSync(this.filePath, 'utf-8');
-    const lines = fileContent.split('\n');
+  const processChart = generateASCIIChart(chartData.process.data, chartData.process.timestamps, 'Process Request Duration');
+  const finalizeChart = generateASCIIChart(chartData.finalize.data, chartData.finalize.timestamps, 'Finalize Request Duration');
 
-    lines.forEach(line => {
-      if (line.trim() === '') return;
-
-      const data = JSON.parse(line);
-
-      if (data.type === 'Point' && data.metric === 'http_req_duration') {
-        const timestamp = new Date(data.data.time).getTime();
-        const duration = data.data.value;
-        const name = data.data.tags.name;
-
-        if (name.includes('/process')) {
-          this.results.process.duration.push(duration);
-          this.results.process.timestamps.push(timestamp);
-        } else if (name.includes('/finalize')) {
-          this.results.finalize.duration.push(duration);
-          this.results.finalize.timestamps.push(timestamp);
-        }
-      } else if (data.type === 'Point' && data.metric === 'http_req_failed') {
-        const failed = data.data.value;
-        const name = data.data.tags.name;
-
-        if (name.includes('/process')) {
-          this.results.process.failed.push(failed);
-        } else if (name.includes('/finalize')) {
-          this.results.finalize.failed.push(failed);
-        }
-      }
-    });
-
-    return this.results;
-  }
-
-  calculateStatistics(data) {
-    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-    const max = arr => Math.max(...arr);
-    const min = arr => Math.min(...arr);
-    const percentile = (arr, p) => {
-      const sorted = [...arr].sort((a, b) => a - b);
-      const index = Math.ceil((p / 100) * sorted.length) - 1;
-      return sorted[index];
-    };
-
-    return {
-      avg: avg(data),
-      max: max(data),
-      min: min(data),
-      p90: percentile(data, 90),
-      p95: percentile(data, 95)
-    };
-  }
-
-  generateChartData() {
-    const processStats = this.calculateStatistics(this.results.process.duration);
-    const finalizeStats = this.calculateStatistics(this.results.finalize.duration);
-
-    return {
-      process: {
-        data: this.results.process.duration,
-        timestamps: this.results.process.timestamps,
-        stats: processStats
-      },
-      finalize: {
-        data: this.results.finalize.duration,
-        timestamps: this.results.finalize.timestamps,
-        stats: finalizeStats
-      }
-    };
-  }
-}
-
-function generateASCIIChart(data, timestamps, title, width = 30, height = 20) {
-    if (data.length === 0 || timestamps.length === 0) {
-      return `No data available for ${title}`;
-    }
-  
-    const startTime = new Date(Math.min(...timestamps));
-    const endTime = new Date(Math.max(...timestamps));
-    const duration = (endTime - startTime) / 1000; // duration in seconds
-  
-    // Calculate requests per second
-    const timeSlices = new Array(width).fill(0);
-    data.forEach((_, index) => {
-      const sliceIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
-      if (sliceIndex >= 0 && sliceIndex < width) {
-        timeSlices[sliceIndex]++;
-      }
-    });
-    const rpsData = timeSlices.map(count => count / (duration / width));
-  
-    // Scale the data to fit the height
-    const minLatency = Math.min(...data);
-    const maxLatency = Math.max(...data);
-    const minRps = Math.min(...rpsData);
-    const maxRps = Math.max(...rpsData);
-  
-    const scaleLatency = (value) => Math.floor((value - minLatency) / (maxLatency - minLatency) * (height - 1));
-    const scaleRps = (value) => Math.floor((value - minRps) / (maxRps - minRps) * (height - 1));
-  
-    // Create the charts
-    let chart = `${title}\n\n`;
-    const leftPadding = 12; // Adjust this value to fit your largest number
-    chart += `Latency (ms)`.padStart(leftPadding) + ' '.repeat(width + 1) + '│ ' + 'Requests/s'.padStart(leftPadding) + ' '.repeat(width) + '\n';
-  
-    for (let i = height - 1; i >= 0; i--) {
-      let latencyValue = minLatency + (maxLatency - minLatency) * (i / (height - 1));
-      let rpsValue = minRps + (maxRps - minRps) * (i / (height - 1));
-      let latencyLine = latencyValue.toFixed(2).padStart(leftPadding) + ' │';
-      let rpsLine = rpsValue.toFixed(2).padStart(leftPadding) + ' │';
-  
-      for (let j = 0; j < width; j++) {
-        const latencyHeight = scaleLatency(data[Math.floor(j * data.length / width)]);
-        const rpsHeight = scaleRps(rpsData[j]);
-  
-        latencyLine += latencyHeight >= i ? '█' : ' ';
-        rpsLine += rpsHeight >= i ? '█' : ' ';
-      }
-      chart += latencyLine + ' │ ' + rpsLine + '\n';
-    }
-  
-    const bottomLine = '─'.repeat(leftPadding) + '┴' + '─'.repeat(width) + '┼' + '─'.repeat(leftPadding + 1) + '┴' + '─'.repeat(width);
-    chart += bottomLine + '\n';
-  
-    const timeLabels = ' '.repeat(leftPadding + 1) + '0s' + ' '.repeat(width - 5) + duration.toFixed(0) + 's';
-    chart += timeLabels + ' │ ' + timeLabels + '\n';
-  
-    return chart;
-  }
-
-// Main execution
-const filePath = 'k6-results.json';
-const parser = new K6ResultsParser(filePath);
-parser.parse();
-const chartData = parser.generateChartData();
-
-const processChart = generateASCIIChart(chartData.process.data, chartData.process.timestamps, 'Process Request Duration');
-const finalizeChart = generateASCIIChart(chartData.finalize.data, chartData.finalize.timestamps, 'Finalize Request Duration');
-
-// Save charts to separate files
-fs.writeFileSync('process_chart.txt', processChart);
-fs.writeFileSync('finalize_chart.txt', finalizeChart);
-
-// Generate summary text
-const summaryText = `
+  // Generate summary text
+  const summaryText = `
 K6 Load Test Results
 
 Process Request:
@@ -181,6 +29,19 @@ Finalize Request:
 • 95th percentile: ${chartData.finalize.stats.p95.toFixed(2)} ms
 `;
 
-fs.writeFileSync('summary.txt', summaryText);
+  // Write to files if outputDir is provided
+  if (outputDir) {
+    fs.writeFileSync(`${outputDir}/process_chart.txt`, processChart);
+    fs.writeFileSync(`${outputDir}/finalize_chart.txt`, finalizeChart);
+    fs.writeFileSync(`${outputDir}/summary.txt`, summaryText);
+    console.log('Charts and summary saved to files.');
+  }
 
-console.log('Charts and summary saved to files.');
+  return {
+    processChart,
+    finalizeChart,
+    summaryText
+  };
+}
+
+module.exports = generateK6Charts;
