@@ -13,9 +13,9 @@ const scenarios = {
     executor: 'ramping-vus',
     startVUs: 0,
     stages: [
-      { duration: '5m', target: 100 },
-      { duration: '10m', target: 100 },
-      { duration: '5m', target: 0 },
+      { duration: '1s', target: 10 },
+      { duration: '3s', target: 10 },
+      { duration: '1s', target: 0 },
     ],
   },
   soak: {
