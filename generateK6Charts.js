@@ -91,21 +91,16 @@ class K6ResultsParser {
   }
 }
 
-function generateASCIIChart(data, timestamps, title, width = 60, height = 20) {
+function generateASCIIChart(data, timestamps, title, width = 30, height = 20) {
     if (data.length === 0 || timestamps.length === 0) {
       return `No data available for ${title}`;
     }
-  
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const range = max - min;
-    const step = range / height;
   
     const startTime = new Date(Math.min(...timestamps));
     const endTime = new Date(Math.max(...timestamps));
     const duration = (endTime - startTime) / 1000; // duration in seconds
   
-    // Calculate requests per second for each time slice
+    // Calculate requests per second
     const timeSlices = new Array(width).fill(0);
     data.forEach((_, index) => {
       const sliceIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
@@ -113,40 +108,43 @@ function generateASCIIChart(data, timestamps, title, width = 60, height = 20) {
         timeSlices[sliceIndex]++;
       }
     });
-    const maxRps = duration > 0 ? Math.max(...timeSlices) / (duration / width) : 0;
+    const rpsData = timeSlices.map(count => count / (duration / width));
   
-    // Scale the data to fit the width
-    const scaledData = new Array(width).fill(min);
-    data.forEach((value, index) => {
-      const scaledIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
-      if (scaledIndex >= 0 && scaledIndex < width) {
-        scaledData[scaledIndex] = Math.max(scaledData[scaledIndex], value);
-      }
-    });
+    // Scale the data to fit the height
+    const minLatency = Math.min(...data);
+    const maxLatency = Math.max(...data);
+    const minRps = Math.min(...rpsData);
+    const maxRps = Math.max(...rpsData);
   
-    let chart = `${title}\n`;
-    chart += `${max.toFixed(2)} ms ┤ ${maxRps.toFixed(2)} req/s\n`;
+    const scaleLatency = (value) => Math.floor((value - minLatency) / (maxLatency - minLatency) * (height - 1));
+    const scaleRps = (value) => Math.floor((value - minRps) / (maxRps - minRps) * (height - 1));
+  
+    // Create the charts
+    let chart = `${title}\n\n`;
+    const leftPadding = 12; // Adjust this value to fit your largest number
+    chart += `Latency (ms)`.padStart(leftPadding) + ' '.repeat(width + 1) + '│ ' + 'Requests/s'.padStart(leftPadding) + ' '.repeat(width) + '\n';
   
     for (let i = height - 1; i >= 0; i--) {
-      const latencyThreshold = max - step * (height - i);
-      const rpsThreshold = maxRps * (i + 1) / height;
-      let line = '';
+      let latencyValue = minLatency + (maxLatency - minLatency) * (i / (height - 1));
+      let rpsValue = minRps + (maxRps - minRps) * (i / (height - 1));
+      let latencyLine = latencyValue.toFixed(2).padStart(leftPadding) + ' │';
+      let rpsLine = rpsValue.toFixed(2).padStart(leftPadding) + ' │';
+  
       for (let j = 0; j < width; j++) {
-        if (scaledData[j] >= latencyThreshold) {
-          line += '█';
-        } else if (duration > 0 && (timeSlices[j] / (duration / width)) >= rpsThreshold) {
-          line += '▒';
-        } else {
-          line += ' ';
-        }
+        const latencyHeight = scaleLatency(data[Math.floor(j * data.length / width)]);
+        const rpsHeight = scaleRps(rpsData[j]);
+  
+        latencyLine += latencyHeight >= i ? '█' : ' ';
+        rpsLine += rpsHeight >= i ? '█' : ' ';
       }
-      chart += `${latencyThreshold.toFixed(2).padStart(8)} ms ┤${line} ${rpsThreshold.toFixed(2)} req/s\n`;
+      chart += latencyLine + ' │ ' + rpsLine + '\n';
     }
   
-    chart += `${min.toFixed(2)} ms ┤${'─'.repeat(width)}\n`;
-    chart += `              ${' '.repeat(Math.floor(width / 2) - 5)}Time →\n`;
-    chart += `              0s${' '.repeat(width - 7)}${duration.toFixed(0)}s\n`;
-    chart += `              █ = Latency   ▒ = Request Rate\n`;
+    const bottomLine = '─'.repeat(leftPadding) + '┴' + '─'.repeat(width) + '┼' + '─'.repeat(leftPadding + 1) + '┴' + '─'.repeat(width);
+    chart += bottomLine + '\n';
+  
+    const timeLabels = ' '.repeat(leftPadding + 1) + '0s' + ' '.repeat(width - 5) + duration.toFixed(0) + 's';
+    chart += timeLabels + ' │ ' + timeLabels + '\n';
   
     return chart;
   }
