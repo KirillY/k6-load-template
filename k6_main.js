@@ -25,7 +25,7 @@ function runCommand(command, args) {
 async function runK6Tests(scenario = 'load') {
   console.log(`Running K6 tests with scenario: ${scenario}`);
   try {
-    await runCommand('k6', ['run', '--out', 'json=k6-results.json', '-e', `SCENARIO=${scenario}`, 'k6RunTests.js']);
+    await runCommand('k6', ['run', '--out', 'json=k6-results.json', '-e', `SCENARIO=${scenario}`, 'k6RunTests.mjs']);
     console.log('K6 tests completed successfully');
   } catch (error) {
     console.error('Error running K6 tests:', error.message);

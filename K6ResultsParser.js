@@ -19,6 +19,7 @@ class K6ResultsParser {
 
   parse() {
     const lines = this.data.split('\n');
+    let isFirstProcessRequest = true;
 
     lines.forEach(line => {
       if (line.trim() === '') return;
@@ -31,8 +32,12 @@ class K6ResultsParser {
         const name = data.data.tags.name;
 
         if (name.includes('/process')) {
-          this.results.process.duration.push(duration);
-          this.results.process.timestamps.push(timestamp);
+          if (isFirstProcessRequest) {
+            isFirstProcessRequest = false;
+          } else {
+            this.results.process.duration.push(duration);
+            this.results.process.timestamps.push(timestamp);
+          }
         } else if (name.includes('/finalize')) {
           this.results.finalize.duration.push(duration);
           this.results.finalize.timestamps.push(timestamp);
@@ -42,7 +47,9 @@ class K6ResultsParser {
         const name = data.data.tags.name;
 
         if (name.includes('/process')) {
-          this.results.process.failed.push(failed);
+          if (!isFirstProcessRequest) {
+            this.results.process.failed.push(failed);
+          }
         } else if (name.includes('/finalize')) {
           this.results.finalize.failed.push(failed);
         }

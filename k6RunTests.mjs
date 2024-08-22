@@ -14,7 +14,7 @@ const scenarios = {
     startVUs: 0,
     stages: [
       { duration: '1s', target: 10 },
-      { duration: '3s', target: 10 },
+      { duration: '10s', target: 30 },
       { duration: '1s', target: 0 },
     ],
   },

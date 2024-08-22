@@ -3,28 +3,44 @@ function generateASCIIChart(data, timestamps, title, width = 30, height = 20) {
       return `No data available for ${title}`;
     }
   
+    // Remove the first data point (smoke test)
+    data = data.slice(1);
+    timestamps = timestamps.slice(1);
+  
     const startTime = new Date(Math.min(...timestamps));
     const endTime = new Date(Math.max(...timestamps));
     const duration = (endTime - startTime) / 1000; // duration in seconds
   
-    // Calculate requests per second
-    const timeSlices = new Array(width).fill(0);
-    data.forEach((_, index) => {
-      const sliceIndex = Math.floor((timestamps[index] - startTime) / (duration * 1000 / width));
-      if (sliceIndex >= 0 && sliceIndex < width) {
-        timeSlices[sliceIndex]++;
-      }
+    // Calculate requests per second for each data point
+    const rpsData = timestamps.map((timestamp, index) => {
+      const prevTimestamp = index > 0 ? timestamps[index - 1] : timestamp;
+      const timeDiff = (new Date(timestamp) - new Date(prevTimestamp)) / 1000;
+      return timeDiff > 0 ? 1 / timeDiff : 0;
     });
-    const rpsData = timeSlices.map(count => count / (duration / width));
+  
+    // Group data into time slices
+    const sliceDuration = duration / width;
+    const latencySlices = new Array(width).fill(0).map(() => []);
+    const rpsSlices = new Array(width).fill(0).map(() => []);
+  
+    timestamps.forEach((timestamp, index) => {
+      const sliceIndex = Math.min(Math.floor((new Date(timestamp) - startTime) / (sliceDuration * 1000)), width - 1);
+      latencySlices[sliceIndex].push(data[index]);
+      rpsSlices[sliceIndex].push(rpsData[index]);
+    });
+  
+    // Calculate average for each slice
+    const avgLatencyData = latencySlices.map(slice => slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0);
+    const avgRpsData = rpsSlices.map(slice => slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0);
   
     // Scale the data to fit the height
-    const minLatency = Math.min(...data);
-    const maxLatency = Math.max(...data);
-    const minRps = Math.min(...rpsData);
-    const maxRps = Math.max(...rpsData);
+    const minLatency = Math.min(...avgLatencyData.filter(v => v > 0));
+    const maxLatency = Math.max(...avgLatencyData);
+    const minRps = Math.min(...avgRpsData.filter(v => v > 0));
+    const maxRps = Math.max(...avgRpsData);
   
-    const scaleLatency = (value) => Math.floor((value - minLatency) / (maxLatency - minLatency) * (height - 1));
-    const scaleRps = (value) => Math.floor((value - minRps) / (maxRps - minRps) * (height - 1));
+    const scaleLatency = (value) => value === 0 ? -1 : Math.floor((value - minLatency) / (maxLatency - minLatency) * (height - 1));
+    const scaleRps = (value) => value === 0 ? -1 : Math.floor((value - minRps) / (maxRps - minRps) * (height - 1));
   
     // Create the charts
     let chart = `${title}\n\n`;
@@ -38,8 +54,8 @@ function generateASCIIChart(data, timestamps, title, width = 30, height = 20) {
       let rpsLine = rpsValue.toFixed(2).padStart(leftPadding) + ' │';
   
       for (let j = 0; j < width; j++) {
-        const latencyHeight = scaleLatency(data[Math.floor(j * data.length / width)]);
-        const rpsHeight = scaleRps(rpsData[j]);
+        const latencyHeight = scaleLatency(avgLatencyData[j]);
+        const rpsHeight = scaleRps(avgRpsData[j]);
   
         latencyLine += latencyHeight >= i ? '█' : ' ';
         rpsLine += rpsHeight >= i ? '█' : ' ';

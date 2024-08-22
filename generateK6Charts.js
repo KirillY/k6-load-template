@@ -44,4 +44,26 @@ Finalize Request:
   };
 }
 
+// Add this section for standalone execution
+if (require.main === module) {
+  const inputFile = process.argv[2] || 'k6-results.json';
+  const outputDir = process.argv[3] || '.';
+
+  console.log(`Generating charts from ${inputFile}...`);
+  
+  try {
+    const inputData = fs.readFileSync(inputFile, 'utf-8');
+    const results = generateK6Charts(inputData, outputDir);
+    
+    console.log('Chart generation complete.');
+    console.log('Summary:');
+    console.log(results.summaryText);
+    console.log(`Process chart saved to ${outputDir}/process_chart.txt`);
+    console.log(`Finalize chart saved to ${outputDir}/finalize_chart.txt`);
+    console.log(`Summary saved to ${outputDir}/summary.txt`);
+  } catch (error) {
+    console.error('Error generating charts:', error.message);
+  }
+}
+
 module.exports = generateK6Charts;
