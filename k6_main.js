@@ -1,6 +1,8 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
-const generateK6Charts = require('./generateK6Charts');
+const K6ResultsParser = require('./K6ResultsParser');
+const generateASCIIChart = require('./generateASCIIChart');
+const generateSummaryTable = require('./generateSummaryTable');
 const { WebClient } = require('@slack/web-api');
 
 const web = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -33,12 +35,28 @@ async function runK6Tests(scenario = 'load') {
   }
 }
 
-async function generateCharts(inputFile, useFiles = true) {
+async function generateCharts(inputFile) {
   console.log('Generating charts...');
-  const inputData = fs.readFileSync(inputFile, 'utf-8');
-  const result = generateK6Charts(inputData, useFiles ? '.' : null);
-  console.log('Charts generated successfully');
-  return result;
+  try {
+    const inputData = fs.readFileSync(inputFile, 'utf-8');
+    const parser = new K6ResultsParser(inputData);
+    parser.parse();
+    const summaryStats = parser.generateSummaryStats();
+    const chartData = parser.generateChartData();
+
+    console.log('Debug: Generated summary stats:', JSON.stringify(summaryStats, null, 2));
+
+    const summaryTable = generateSummaryTable(summaryStats);
+    const processChart = generateASCIIChart(chartData.process.data, chartData.process.timestamps, 'Process Request Duration');
+    const finalizeChart = generateASCIIChart(chartData.finalize.data, chartData.finalize.timestamps, 'Finalize Request Duration');
+
+    console.log('Charts and summary generated successfully');
+    return { summaryTable, processChart, finalizeChart };
+  } catch (error) {
+    console.error('Error generating charts:', error.message);
+    console.error('Error stack:', error.stack);
+    throw error;
+  }
 }
 
 async function sendToSlack(summaryText, processChart, finalizeChart) {
@@ -69,19 +87,29 @@ async function sendToSlack(summaryText, processChart, finalizeChart) {
     console.log('All results sent to Slack successfully');
   } catch (error) {
     console.error('Error sending results to Slack:', error.message);
+    throw error;
   }
 }
 
 async function main() {
   const scenario = process.argv[2] || 'load';
-  const useFiles = process.argv[3] !== 'no-files';
 
   try {
     await runK6Tests(scenario);
-    const { summaryText, processChart, finalizeChart } = await generateCharts('k6-results.json', useFiles);
-    await sendToSlack(summaryText, processChart, finalizeChart);
+    const { summaryTable, processChart, finalizeChart } = await generateCharts('k6-results.json');
+    
+    console.log(summaryTable);
+    console.log(processChart);
+    console.log(finalizeChart);
+
+    if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL_ID) {
+      await sendToSlack(summaryTable, processChart, finalizeChart);
+    } else {
+      console.log('Slack credentials not provided. Skipping Slack notification.');
+    }
   } catch (error) {
     console.error('An error occurred:', error.message);
+    process.exit(1);
   }
 }
 
